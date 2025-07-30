@@ -179,9 +179,13 @@ switch(first_byte):
     1 byte - usually with value 7 but don't know what is that
     4 bytes - relative pointer to the metadata access function
 
+  case 0x53 ('S' as char):
+    standard-substitutions ::= 'S' KNOWN-TYPE-KIND       // known nominal type substitution
+    1 byte - See Mangling.rst for a complete list. You'll find them as "KNOWN-TYPE-KIND" (i.e 0x66 is float)
+
 ```
 
-  > **NOTE:** We don't know what __0x53__ type is. If anyone has any idea, please feel free to add it. We know that are more types but atm we'll leave it like this.
+They all end in NULL byte!
 
 ### `__TEXT.__swift5_fieldmd`
 

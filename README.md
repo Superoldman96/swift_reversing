@@ -148,15 +148,15 @@ This section is a list of relative pointers to **Protocol Conformance Descriptor
 
 ### `__TEXT.__swift5_typeref`
 
-This section contains the symbolic references needed by the runtime to perform instantiations and reflections. 
+This section contains the symbolic references needed by the runtime to perform instantiations and reflections.
 
-For instance, the first argument of methods such as `swift_instantiateConcreteTypeFromMangledName` (which will return the metadata) will point to the `__data` section which will contain a relative pointer to the `swift5_typeref` section. 
+For instance, the first argument of methods such as `swift_instantiateConcreteTypeFromMangledName` (which will return the metadata) will point to the `__data` section which will contain a relative pointer to the `swift5_typeref` section.
 
-These symbolic references follow a pattern. From our research, we found in Swift docs that depending on the first byte of the symbolic reference what we find has different meanings. 
+These symbolic references follow a pattern. From our research, we found in Swift docs that depending on the first byte of the symbolic reference what we find has different meanings.
 
 Because a type can contain other types (imagine an array of elements - you have the ContiguousArray type and what is being contained), when we see a symbolic reference definition we may see concatenated references.
 
-__NOTE: THIS IS WIP, SOME STUFF MAY BE INACCURATE OR HAS MISSING INFO__
+**NOTE: THIS IS WIP, SOME STUFF MAY BE INACCURATE OR HAS MISSING INFO**
 
 (usually we'll see a symbol name referencing the first byte of the symbolic reference which will make our lifes easier when parsing with an ida-script)
 
@@ -361,12 +361,12 @@ Within them, you'll be able to find the raw bytes of what we've just described.
 
 ```swift
 type TargetProtocolDescriptor struct {
-	TargetContextDescriptor
-	NameOffset                 RelativeDirectPointer // The name of the protocol.
-	NumRequirementsInSignature uint32                // The number of generic requirements in the requirement signature of the protocol.
-	NumRequirements            uint32                /* The number of requirements in the protocol. If any requirements beyond MinimumWitnessTableSizeInWords are present
-	 * in the witness table template, they will be not be overwritten with defaults. */
-	AssociatedTypeNamesOffset RelativeDirectPointer // Associated type names, as a space-separated list in the same order as the requirements.
+ TargetContextDescriptor
+ NameOffset                 RelativeDirectPointer // The name of the protocol.
+ NumRequirementsInSignature uint32                // The number of generic requirements in the requirement signature of the protocol.
+ NumRequirements            uint32                /* The number of requirements in the protocol. If any requirements beyond MinimumWitnessTableSizeInWords are present
+  * in the witness table template, they will be not be overwritten with defaults. */
+ AssociatedTypeNamesOffset RelativeDirectPointer // Associated type names, as a space-separated list in the same order as the requirements.
 }
 ```
 
@@ -376,16 +376,16 @@ Here are the structures that define both of them:
 
 ```swift
 type TargetGenericRequirementDescriptor struct {
-	Flags                                  GenericRequirementFlags
-	ParamOff                               RelativeDirectPointer
-	TypeOrProtocolOrConformanceOrLayoutOff RelativeIndirectablePointer 
+ Flags                                  GenericRequirementFlags
+ ParamOff                               RelativeDirectPointer
+ TypeOrProtocolOrConformanceOrLayoutOff RelativeIndirectablePointer 
 }
 ```
 
 ```swift
 type TargetProtocolRequirement struct {
-	Flags                 ProtocolRequirementFlags
-	DefaultImplementation RelativeDirectPointer // The optional default implementation of the protocol.
+ Flags                 ProtocolRequirementFlags
+ DefaultImplementation RelativeDirectPointer // The optional default implementation of the protocol.
 }
 ```
 
@@ -488,7 +488,7 @@ var structsArray:[structs]
 structsArray.append(structTesting)
 ```
 
-What is it going to happen? Since both structs have different sizes how does Swift manage this? 
+What is it going to happen? Since both structs have different sizes how does Swift manage this?
 
 This is where `Existential Containers` come into action. `Existential Containers` is a form of creating a type with a generic structure that it can adapt to any type to any conforming protocol. A visual representation of this would be:
 
@@ -502,7 +502,7 @@ This is where `Existential Containers` come into action. `Existential Containers
 
 To continue with the example, when we first append the `structTesting` this will happen:
 
-Because `structTesting` attributes can fit in the the `Value Buffer`(first 3 - 8 bytes) we can store inline. 
+Because `structTesting` attributes can fit in the the `Value Buffer`(first 3 - 8 bytes) we can store inline.
 
 A struct will be created in the stack like this:
 
@@ -577,14 +577,14 @@ Which layout are we going to have? Let's see:
 0x58 - 0
 
 0x60 - VWT
- 
+
 0x68 - PWT
 
 ---
 
-Now as you can see, even though both structs are different size, they are adapted to fit using Existential Containers :) 
+Now as you can see, even though both structs are different size, they are adapted to fit using Existential Containers :)
 
-__NOTE: If we were to interact with the ValueBuffer we would make use of the VWT. If we were to iterate over this array and call functions on the array elements, we would go look for them in the PWT.__
+**NOTE: If we were to interact with the ValueBuffer we would make use of the VWT. If we were to iterate over this array and call functions on the array elements, we would go look for them in the PWT.**
 
 ## Protocol conformance descriptors
 
@@ -667,6 +667,43 @@ _finalizeUninitializedArray<A>(_:)(array, typeAny);
 
 If a method raises an error, it will write its error object into `X21`. It is then raised using `swift_unexpectedError()`.
 If the user raised an error explicitly, it will instead use `swift_allocError()` to allocate the error using the corresponding type metadata.
+
+## Blocks
+
+Blocks can be invoked via various GCD methods. For example:
+
+- `OS_dispatch_queue.sync<A>(execute:)`
+- `OS_dispatch_queue.sync<A>(flags:execute:)`
+- ...
+
+Let's break down the `OS_dispatch_queue.sync<A>(execute:)` signature, which will help us better understand how the local variables are passed into the callee:
+
+```c
+void *__usercall OS_dispatch_queue_sync_A__execute__@<X0>(_QWORD *__return_ptr a1@<X8>, void *dispatchQueue@<X20>, void *callback@<X0>, id params@<X1>, void *returnType@<X2>)
+```
+
+The arguments are as follows:
+
+- `X8` - Will contain the returned value.
+- `X20` - Since the `OS_dispatch_queue` is a class, this will be it's `self` object.
+- `X0` - The invoked function.
+- `X1` - The parameters passed to the invoked function.
+- `X2` - The [type metadata](#type-metadata) of the returned type.
+
+The parameters are usually serialized using a stack-block, which will trigger dynamic stack allocation by substracting `X8` by the size of the
+required local variables. When that happens we will need to increase the stack frame size manually when reversing with IDA. 
+
+To do this, go to: `Edit function (Alt+P)` -> Increase `Local Variables Area` by the substracted size of `X1`.
+
+Now you can easily define your struct.
+
+The invoked function will be called using the following signature:
+
+```c
+void __usercall callback(id *params@<X20>, void *retval@<X8>)
+```
+
+As you can see, the `params` are passed as the `self` object (`X20`).
 
 ## References
 
